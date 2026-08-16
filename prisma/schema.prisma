@@ -1,0 +1,185 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- ליבה (פאזה 1) ----------
+
+model Task {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+
+  // status: "todo" | "in_progress" | "done" | "cancelled"
+  status   String @default("todo")
+  // priority: 1=דחוף, 2=גבוה, 3=בינוני, 4=רגיל(ברירת מחדל)
+  priority Int    @default(4)
+
+  dueDate     DateTime? // UTC
+  hasDueTime  Boolean   @default(false) // האם השעה משמעותית או תאריך בלבד
+  completedAt DateTime?
+
+  // חזרתיות (Todoist-style rolling task)
+  recurrenceRule String? // RRULE, למשל "FREQ=WEEKLY;BYDAY=MO"
+  // recurrenceMode: "scheduled" | "completion"
+  recurrenceMode String  @default("scheduled")
+
+  sortOrder Float @default(0) // מיון ידני (drag & drop)
+
+  projectId String? // null = Inbox
+  project   Project? @relation(fields: [projectId], references: [id])
+
+  parentId String? // תת-משימה
+  parent   Task?   @relation("Subtasks", fields: [parentId], references: [id])
+  children Task[]  @relation("Subtasks")
+
+  tags       Tag[]          @relation("TaskTags")
+  activities TaskActivity[]
+  reminders  Reminder[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // soft delete (סל מיחזור)
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([projectId])
+  @@index([parentId])
+  @@index([deletedAt])
+}
+
+model Project {
+  id        String    @id @default(cuid())
+  name      String
+  color     String? // hex
+  sortOrder Float     @default(0)
+  tasks     Task[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String?
+  tasks     Task[]   @relation("TaskTags")
+  createdAt DateTime @default(now())
+}
+
+model TaskActivity {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // action: "created" | "updated" | "completed" | "reopened" |
+  //         "status_changed" | "priority_changed" | "due_changed" |
+  //         "project_changed" | "title_changed" | "note_changed" |
+  //         "tag_added" | "tag_removed" | "subtask_added" |
+  //         "recurrence_completed" | "deleted" | "restored"
+  action   String
+  field    String? // שם השדה ששונה
+  oldValue String? // JSON-encoded
+  newValue String? // JSON-encoded
+
+  // source: "manual" | "whatsapp" | "system"
+  source String @default("manual")
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@index([createdAt])
+}
+
+// ---------- מוכנות פאזה 2: תזכורות + הודעות (בלי לוגיקה) ----------
+
+model Reminder {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // type: "relative" | "absolute"
+  type          String
+  offsetMinutes Int? // ל-relative: -1440 = יום לפני, -60 = שעה לפני
+  remindAt      DateTime? // ל-absolute, או ערך מחושב (UTC)
+
+  // channel: "whatsapp" (בעתיד אולי עוד)
+  channel           String    @default("whatsapp")
+  // status: "pending" | "sent" | "failed" | "cancelled"
+  status            String    @default("pending")
+  sentAt            DateTime?
+  providerMessageId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([remindAt])
+  @@index([taskId])
+}
+
+model OutboundMessage {
+  id                String    @id @default(cuid())
+  taskId            String?
+  reminderId        String?
+  toNumber          String
+  body              String
+  provider          String    @default("green_api")
+  providerMessageId String?
+  // status: "queued" | "sent" | "delivered" | "failed"
+  status            String    @default("queued")
+  idempotencyKey    String    @unique
+  error             String?
+  createdAt         DateTime  @default(now())
+  sentAt            DateTime?
+
+  @@index([status])
+}
+
+model InboundMessage {
+  id                String    @id @default(cuid())
+  fromNumber        String
+  body              String
+  provider          String    @default("green_api")
+  providerMessageId String    @unique // dedup מול Green API
+  rawPayload        String // JSON גולמי
+  parsedIntent      String? // JSON: תוצאת פרסור (done/snooze/...)
+  relatedTaskId     String?
+  receivedAt        DateTime  @default(now())
+  processedAt       DateTime?
+
+  @@index([relatedTaskId])
+}
+
+// מקשר בין "פרומפט סטטוס" שיצא, לתשובה שתחזור
+model PendingInteraction {
+  id                  String    @id @default(cuid())
+  taskId              String
+  promptMessageId     String? // OutboundMessage.id
+  expectedActions     String // JSON: {"1":"done","2":"snooze_1h"}
+  // status: "awaiting" | "resolved" | "expired"
+  status              String    @default("awaiting")
+  expiresAt           DateTime?
+  resolvedByMessageId String? // InboundMessage.id
+  createdAt           DateTime  @default(now())
+
+  @@index([status])
+  @@index([taskId])
+}
+
+// הגדרות משתמש-יחיד (singleton, id קבוע = "singleton")
+model Settings {
+  id                       String   @id @default("singleton")
+  whatsappNumber           String?
+  timezone                 String   @default("Asia/Jerusalem")
+  weekStartsOn             Int      @default(0) // 0=ראשון
+  defaultReminderOffsetMin Int? // ברירת מחדל לתזכורת חדשה
+  updatedAt                DateTime @updatedAt
+}
