@@ -25,4 +25,4 @@ Repo: https://github.com/liorb29/CLUB3029
 - `.claude/skills/` — skills מותאמים לפרויקט
 - `.claude/commands/` — slash commands מותאמים לפרויקט
 
-> **Status:** כרגע רק שלד הפרויקט מוקם. פרויקט ה-Next.js עצמו עדיין לא אותחל (`create-next-app` טרם הורץ ואין dependencies מותקנים).
+> **Status:** M1–M3 הושלמו. פרויקט Next.js פעיל עם Prisma/SQLite (סכימה מלאה, כולל טבלאות פאזה 2 ללא לוגיקה), ו-CRUD משימות בסיסי (יצירה/עריכה/השלמה/מחיקה רכה) עם שכבת `TaskActivity` אחידה. הרץ `npm run dev` להעלאה מקומית. Milestones הבאים לפי `PRD-task-manager.md`: פרויקטים/תגיות/תת-משימות, תצוגות, פרסר עברי + Quick Add, ועוד.

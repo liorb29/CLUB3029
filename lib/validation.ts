@@ -39,3 +39,22 @@ export const outboundMessageStatusSchema = z.enum(OUTBOUND_MESSAGE_STATUSES);
 export const pendingInteractionStatusSchema = z.enum(
   PENDING_INTERACTION_STATUSES,
 );
+
+// --- Task CRUD input (Server Actions, actions/tasks.ts) ---
+
+export const createTaskInputSchema = z.object({
+  title: z.string().trim().min(1, "כותרת היא שדה חובה").max(500),
+  priority: prioritySchema.optional(),
+});
+export type CreateTaskInput = z.infer<typeof createTaskInputSchema>;
+
+export const updateTaskInputSchema = z
+  .object({
+    title: z.string().trim().min(1, "כותרת היא שדה חובה").max(500).optional(),
+    description: z.string().trim().max(5000).nullable().optional(),
+    priority: prioritySchema.optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "יש לספק לפחות שדה אחד לעדכון",
+  });
+export type UpdateTaskInput = z.infer<typeof updateTaskInputSchema>;
